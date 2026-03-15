@@ -35,10 +35,14 @@ function addon:OnInitialize()
     )
 end
 local openCooldownViewerSettings = function()
-    if not InCombatLockdown() then
-        CooldownViewerSettings:ShowUIPanel(false)
+    if InCombatLockdown() then
+        CooldownViewerSettings:Show()
+        local frameName = CooldownViewerSettings:GetName()
+        if frameName and not tContains(UISpecialFrames, frameName) then
+            tinsert(UISpecialFrames, frameName)
+        end
     else
-        ns.Addon:Print("Cannot open Cooldown Viewer settings while in combat.")
+        CooldownViewerSettings:ShowUIPanel(false)
     end
 end
 
