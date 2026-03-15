@@ -80,7 +80,12 @@ EventRegistry:RegisterCallback("CooldownViewerSettings.OnDataChanged", function(
         if ns.CooldownStyle then
             ns.CooldownStyle:RefreshHooks()
         end
-        Runtime:MarkDirty()
+        if ns.StyledIcons then
+            ns.StyledIcons:RefreshAll()
+        end
+        if ns.CooldownManager then
+            ns.CooldownManager.ForceRefreshAll()
+        end
     end)
 end)
 EventRegistry:RegisterCallback("CooldownViewerSettings.OnShow", function(arg1, settingsFrame)
@@ -90,6 +95,18 @@ EventRegistry:RegisterCallback("CooldownViewerSettings.OnShow", function(arg1, s
         ns.MiscPanel:EnsureMiscSettingsTab(settingsFrame)
         ns.MiscPanel:RefreshMiscPanel(settingsFrame)
     end
+    if not Runtime:IsAllReady() then
+        return
+    end
+    C_Timer.After(0, function()
+        if ns.StyledIcons then
+            ns.StyledIcons:RefreshAll()
+        end
+
+        if ns.CooldownManager then
+            ns.CooldownManager.ForceRefreshAll()
+        end
+    end)
 end)
 EventRegistry:RegisterCallback("CooldownViewerSettings.OnHide", function()
     Runtime.hasSettingsOpened = false
@@ -97,7 +114,15 @@ EventRegistry:RegisterCallback("CooldownViewerSettings.OnHide", function()
     if not Runtime:IsAllReady() then
         return
     end
-    Runtime:MarkDirty()
+    C_Timer.After(0, function()
+        if ns.StyledIcons then
+            ns.StyledIcons:RefreshAll()
+        end
+
+        if ns.CooldownManager then
+            ns.CooldownManager.ForceRefreshAll()
+        end
+    end)
 end)
 EventRegistry:RegisterCallback("EditMode.Enter", function()
     Runtime.isInEditMode = true
@@ -105,7 +130,18 @@ EventRegistry:RegisterCallback("EditMode.Enter", function()
     if not Runtime:IsAllReady() then
         return
     end
-    Runtime:MarkDirty()
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefreshAll()
+    end
+    C_Timer.After(0, function()
+        if ns.StyledIcons then
+            ns.StyledIcons:RefreshAll()
+        end
+
+        if ns.CooldownManager then
+            ns.CooldownManager.ForceRefreshAll()
+        end
+    end)
 end)
 
 EventRegistry:RegisterCallback("EditMode.Exit", function()
@@ -114,7 +150,19 @@ EventRegistry:RegisterCallback("EditMode.Exit", function()
     if not Runtime:IsAllReady() then
         return
     end
-    Runtime:MarkDirty()
+
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefreshAll()
+    end
+    C_Timer.After(0, function()
+        if ns.StyledIcons then
+            ns.StyledIcons:RefreshAll()
+        end
+
+        if ns.CooldownManager then
+            ns.CooldownManager.ForceRefreshAll()
+        end
+    end)
 end)
 local EventHandler = {}
 EventHandler.events = {}
@@ -191,21 +239,19 @@ EventHandler.events["UPDATE_SHAPESHIFT_FORM"] = function(self, event, ...)
     if not Runtime:IsAllReady() then
         return
     end
-    Runtime:MarkDirty()
-end
 
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefreshAll()
+    end
+end
 EventHandler.events["PLAYER_REGEN_DISABLED"] = function(self, event, ...)
     if not Runtime:IsAllReady() then
         return
     end
-    Runtime:MarkDirty()
-end
 
-EventHandler.events["PLAYER_REGEN_ENABLED"] = function(self, event, ...)
-    if not Runtime:IsAllReady() then
-        return
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefreshAll()
     end
-    Runtime:MarkDirty()
 end
 
 EventHandler.events["SPELL_UPDATE_COOLDOWN"] = function(self, event, spellId)
@@ -243,63 +289,91 @@ EventHandler.frame:SetScript("OnEvent", function(self, event, ...)
     EventHandler.events[event](self, event, ...)
 end)
 
--- Use a periodic ticker to detect layout changes instead of hooksecurefunc,
--- which would taint the secure execution path.
-Runtime._dirty = { icons = true, bars = true, essential = true, utility = true }
-Runtime._lastLayoutSerial = {}
-
-local viewerChecks = {
-    { viewer = BuffIconCooldownViewer, key = "icons", styledKey = "BuffIcons", viewerName = "BuffIconCooldownViewer" },
-    { viewer = BuffBarCooldownViewer, key = "bars" },
-    { viewer = EssentialCooldownViewer, key = "essential", styledKey = "Essential", viewerName = "EssentialCooldownViewer" },
-    { viewer = UtilityCooldownViewer, key = "utility", styledKey = "Utility", viewerName = "UtilityCooldownViewer" },
-}
-
-local function GetViewerLayoutSerial(viewer)
-    if not viewer or not viewer.GetChildren then return 0 end
-    local children = { viewer:GetChildren() }
-    local count = 0
-    for _, child in ipairs(children) do
-        if child:IsShown() then
-            count = count + 1
-        end
-    end
-    local w = math.floor((viewer:GetWidth() or 0) * 10)
-    local h = math.floor((viewer:GetHeight() or 0) * 10)
-    return count * 100000 + w * 100 + h
-end
-
-local function CheckAndApplyUpdates()
-    if not Runtime:IsAllReady() or Runtime.hasSettingsOpened or InCombatLockdown() then
+hooksecurefunc(BuffIconCooldownViewer, "RefreshLayout", function()
+    if not Runtime:IsReady(BuffIconCooldownViewer) then
         return
     end
-
-    for _, info in ipairs(viewerChecks) do
-        local serial = GetViewerLayoutSerial(info.viewer)
-        local changed = serial ~= (Runtime._lastLayoutSerial[info.key] or -1)
-
-        if changed or Runtime._dirty[info.key] then
-            Runtime._lastLayoutSerial[info.key] = serial
-            Runtime._dirty[info.key] = false
-
-            if Runtime:IsReady(info.viewer) then
-                if info.styledKey then
-                    if ns.StyledIcons then ns.StyledIcons:RefreshViewer(info.styledKey) end
-                    if ns.CooldownFont then ns.CooldownFont:RefreshViewer(info.viewerName) end
-                    if ns.Swipe then ns.Swipe:RefreshViewer(info.viewerName) end
-                end
-                if ns.CooldownManager then
-                    ns.CooldownManager.ForceRefresh({ [info.key] = true })
-                end
-            end
-        end
+    if ns.StyledIcons then
+        ns.StyledIcons:RefreshViewer("BuffIcons")
     end
-end
-
-function Runtime:MarkDirty()
-    for key in pairs(self._dirty) do
-        self._dirty[key] = true
+    if ns.CooldownFont then
+        ns.CooldownFont:RefreshViewer("BuffIconCooldownViewer")
     end
-end
+    if ns.Swipe then
+        ns.Swipe:RefreshViewer("BuffIconCooldownViewer")
+    end
 
-C_Timer.NewTicker(0.2, CheckAndApplyUpdates)
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefresh({ icons = true })
+    end
+    -- C_Timer.After(0, function()
+    --     if ns.StyledIcons then
+    --         ns.StyledIcons:RefreshViewer("BuffIcons")
+    --     end
+
+    --     if ns.CooldownManager then
+    --         ns.CooldownManager.ForceRefresh({ icons = true })
+    --     end
+    -- end)
+end)
+hooksecurefunc(BuffBarCooldownViewer, "RefreshLayout", function()
+    if not Runtime:IsReady(BuffBarCooldownViewer) then
+        return
+    end
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefresh({ bars = true })
+    end
+end)
+hooksecurefunc(EssentialCooldownViewer, "RefreshLayout", function()
+    if not Runtime:IsReady(EssentialCooldownViewer) then
+        return
+    end
+    if ns.StyledIcons then
+        ns.StyledIcons:RefreshViewer("Essential")
+    end
+    if ns.CooldownFont then
+        ns.CooldownFont:RefreshViewer("EssentialCooldownViewer")
+    end
+    if ns.Swipe then
+        ns.Swipe:RefreshViewer("EssentialCooldownViewer")
+    end
+
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefresh({ essential = true })
+    end
+    -- C_Timer.After(0, function()
+    --     if ns.StyledIcons then
+    --         ns.StyledIcons:RefreshViewer("Essential")
+    --     end
+    --     if ns.CooldownManager then
+    --         ns.CooldownManager.ForceRefresh({ essential = true })
+    --     end
+    -- end)
+end)
+hooksecurefunc(UtilityCooldownViewer, "RefreshLayout", function()
+    -- print("UtilityCooldownViewer RefreshLayout Hook Called")
+    if not Runtime:IsReady(UtilityCooldownViewer) then
+        return
+    end
+    if ns.StyledIcons then
+        ns.StyledIcons:RefreshViewer("Utility")
+    end
+    if ns.CooldownFont then
+        ns.CooldownFont:RefreshViewer("UtilityCooldownViewer")
+    end
+    if ns.Swipe then
+        ns.Swipe:RefreshViewer("UtilityCooldownViewer")
+    end
+
+    if ns.CooldownManager then
+        ns.CooldownManager.ForceRefresh({ utility = true })
+    end
+    -- C_Timer.After(0, function()
+    --     if ns.StyledIcons then
+    --         ns.StyledIcons:RefreshViewer("Utility")
+    --     end
+    --     if ns.CooldownManager then
+    --         ns.CooldownManager.ForceRefresh({ utility = true })
+    --     end
+    -- end)
+end)
