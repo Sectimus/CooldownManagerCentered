@@ -193,15 +193,18 @@ EventHandler.events["UPDATE_SHAPESHIFT_FORM"] = function(self, event, ...)
     end
     Runtime:MarkDirty()
 end
+
 EventHandler.events["PLAYER_REGEN_DISABLED"] = function(self, event, ...)
-    -- Skip all frame modifications during combat to prevent taint
+    if not Runtime:IsAllReady() then
+        return
+    end
+    Runtime:MarkDirty()
 end
 
 EventHandler.events["PLAYER_REGEN_ENABLED"] = function(self, event, ...)
     if not Runtime:IsAllReady() then
         return
     end
-    -- Mark dirty so the ticker applies updates now that combat ended
     Runtime:MarkDirty()
 end
 
@@ -240,10 +243,17 @@ EventHandler.frame:SetScript("OnEvent", function(self, event, ...)
     EventHandler.events[event](self, event, ...)
 end)
 
--- Instead of hooksecurefunc on RefreshLayout (which taints the secure execution path),
--- use a periodic ticker to detect layout changes and apply updates only when safe.
+-- Use a periodic ticker to detect layout changes instead of hooksecurefunc,
+-- which would taint the secure execution path.
 Runtime._dirty = { icons = true, bars = true, essential = true, utility = true }
 Runtime._lastLayoutSerial = {}
+
+local viewerChecks = {
+    { viewer = BuffIconCooldownViewer, key = "icons", styledKey = "BuffIcons", viewerName = "BuffIconCooldownViewer" },
+    { viewer = BuffBarCooldownViewer, key = "bars" },
+    { viewer = EssentialCooldownViewer, key = "essential", styledKey = "Essential", viewerName = "EssentialCooldownViewer" },
+    { viewer = UtilityCooldownViewer, key = "utility", styledKey = "Utility", viewerName = "UtilityCooldownViewer" },
+}
 
 local function GetViewerLayoutSerial(viewer)
     if not viewer or not viewer.GetChildren then return 0 end
@@ -254,29 +264,15 @@ local function GetViewerLayoutSerial(viewer)
             count = count + 1
         end
     end
-    -- Combine child count with viewer dimensions to detect layout changes
     local w = math.floor((viewer:GetWidth() or 0) * 10)
     local h = math.floor((viewer:GetHeight() or 0) * 10)
     return count * 100000 + w * 100 + h
 end
 
 local function CheckAndApplyUpdates()
-    if not Runtime:IsAllReady() then
+    if not Runtime:IsAllReady() or Runtime.hasSettingsOpened or InCombatLockdown() then
         return
     end
-    if Runtime.hasSettingsOpened then
-        return
-    end
-    if InCombatLockdown() then
-        return
-    end
-
-    local viewerChecks = {
-        { viewer = BuffIconCooldownViewer, key = "icons", name = "BuffIcons", cdmViewer = "BuffIconCooldownViewer" },
-        { viewer = BuffBarCooldownViewer, key = "bars", name = nil, cdmViewer = "BuffBarCooldownViewer" },
-        { viewer = EssentialCooldownViewer, key = "essential", name = "Essential", cdmViewer = "EssentialCooldownViewer" },
-        { viewer = UtilityCooldownViewer, key = "utility", name = "Utility", cdmViewer = "UtilityCooldownViewer" },
-    }
 
     for _, info in ipairs(viewerChecks) do
         local serial = GetViewerLayoutSerial(info.viewer)
@@ -287,14 +283,10 @@ local function CheckAndApplyUpdates()
             Runtime._dirty[info.key] = false
 
             if Runtime:IsReady(info.viewer) then
-                if info.name and ns.StyledIcons then
-                    ns.StyledIcons:RefreshViewer(info.name)
-                end
-                if info.name and ns.CooldownFont then
-                    ns.CooldownFont:RefreshViewer(info.cdmViewer)
-                end
-                if info.name and ns.Swipe then
-                    ns.Swipe:RefreshViewer(info.cdmViewer)
+                if info.styledKey then
+                    if ns.StyledIcons then ns.StyledIcons:RefreshViewer(info.styledKey) end
+                    if ns.CooldownFont then ns.CooldownFont:RefreshViewer(info.viewerName) end
+                    if ns.Swipe then ns.Swipe:RefreshViewer(info.viewerName) end
                 end
                 if ns.CooldownManager then
                     ns.CooldownManager.ForceRefresh({ [info.key] = true })
@@ -304,10 +296,10 @@ local function CheckAndApplyUpdates()
     end
 end
 
--- Mark all viewers dirty so next safe tick applies updates
 function Runtime:MarkDirty()
-    self._dirty = { icons = true, bars = true, essential = true, utility = true }
+    for key in pairs(self._dirty) do
+        self._dirty[key] = true
+    end
 end
 
--- Poll every 0.2s instead of hooking into Blizzard's secure RefreshLayout
 C_Timer.NewTicker(0.2, CheckAndApplyUpdates)

@@ -36,22 +36,10 @@ function addon:OnInitialize()
 end
 local openCooldownViewerSettings = function()
     if InCombatLockdown() then
-        if CooldownViewerSettings and CooldownViewerSettings.Show then
-            CooldownViewerSettings:Show()
-            -- Register for Escape-to-close since ShowUIPanel can't be used in combat
-            local frameName = CooldownViewerSettings:GetName()
-            if frameName then
-                local found = false
-                for _, name in ipairs(UISpecialFrames) do
-                    if name == frameName then
-                        found = true
-                        break
-                    end
-                end
-                if not found then
-                    tinsert(UISpecialFrames, frameName)
-                end
-            end
+        CooldownViewerSettings:Show()
+        local frameName = CooldownViewerSettings:GetName()
+        if frameName and not tContains(UISpecialFrames, frameName) then
+            tinsert(UISpecialFrames, frameName)
         end
     else
         CooldownViewerSettings:ShowUIPanel(false)
